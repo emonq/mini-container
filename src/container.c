@@ -2,6 +2,7 @@
 #include "container.h"
 
 #include <err.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <linux/sched.h>
 #include <openssl/sha.h>
@@ -10,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -25,6 +27,8 @@
 #include "type.h"
 #include "user.h"
 #include "utils.h"
+
+#define STACK_SIZE (1024 * 1024)
 
 char *gen_id(char *id, struct container_config *config) {
   unsigned long long now = timestamp();
@@ -112,30 +116,23 @@ void run(struct container_config *config) {
     err(EXIT_FAILURE, "socketpair");
   config->fd = sockets[1];
   if (fcntl(sockets[0], F_SETFD, FD_CLOEXEC) == -1) err(EXIT_FAILURE, "fcntl");
-  setup_cgroup(config->cgroup_base_path, config->id, config->cgroup_limit);
-  char cgroup_path[PATH_MAX];
-  snprintf(cgroup_path, PATH_MAX, "%s/%s", config->cgroup_base_path,
-           config->id);
-  int cgroup_fd = open(cgroup_path, O_RDONLY);
-  if (cgroup_fd == -1) err(EXIT_FAILURE, "open-cgroup");
 
-  struct clone_args clargs = {
-      .flags = CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET |
-               CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWCGROUP |
-               CLONE_INTO_CGROUP,
-      .exit_signal = SIGCHLD,
-      .cgroup = cgroup_fd,
-  };
   prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
-  pid_t child_pid = clone3(&clargs);
+  char *container_stack;
+  container_stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+  pid_t child_pid =
+      clone(container_init, container_stack + STACK_SIZE,
+            CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET |
+                CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWCGROUP | SIGCHLD,
+            config);
   if (child_pid == -1) err(EXIT_FAILURE, "clone");
-  close(cgroup_fd);
-  if (child_pid == 0) {
-    container_init(config);
-    exit(1);
-  }
 
   debug("Child PID: %ld\n", (long)child_pid);
+
+  setup_cgroup(child_pid, config->cgroup_base_path, config->id,
+               config->cgroup_limit);
+
   int uid = getuid(), gid = getgid();
   setup_user_mapping(child_pid, uid, gid, sockets[0]);
 

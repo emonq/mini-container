@@ -31,14 +31,23 @@ int setup_limits(const char *cgroup_path, const pair_t *limits) {
   return 0;
 }
 
-int setup_cgroup(const char *cgroup_base_path, const char *container_id,
-                 const struct pair *limits) {
+int setup_cgroup(pid_t pid, const char *cgroup_base_path,
+                 const char *container_id, const struct pair *limits) {
   char cgroup_path[PATH_MAX];
   snprintf(cgroup_path, PATH_MAX, "%s/%s", cgroup_base_path, container_id);
   debug("Cgroup path: %s\n", cgroup_path);
   if (mkdir(cgroup_path, 0700))
     err(EXIT_FAILURE, "mkdir-cgroup %s", cgroup_path);
   if (limits) setup_limits(cgroup_path, limits);
+
+  snprintf(cgroup_path, PATH_MAX, "%s/%s/cgroup.procs", cgroup_base_path,
+           container_id);
+  int fd = open(cgroup_path, O_WRONLY);
+  if (fd == -1) err(EXIT_FAILURE, "open-cgroup_procs %s", cgroup_path);
+  if (dprintf(fd, "%d", pid) < 0) {
+    err(EXIT_FAILURE, "write-cgroup_procs %s", cgroup_path);
+  }
+  close(fd);
   return 0;
 }
 
