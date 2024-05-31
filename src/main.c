@@ -46,10 +46,11 @@ void parse(int argc, char* argv[], container_config_t* config) {
   while ((opt = getopt_long(argc, argv, "he:m:", long_options,
                             &option_index)) != -1) {
     switch (opt) {
-      case 'h':
+      case 'h': {
         usage(argv[0]);
         break;
-      case 'e':
+      }
+      case 'e': {
         char* arg = strdup(optarg);
         char* key = strtok(optarg, "=");
         char* value = strtok(NULL, "=");
@@ -60,17 +61,20 @@ void parse(int argc, char* argv[], container_config_t* config) {
         free(arg);
         append(&config->env, key, value);
         break;
-      case 'm':
+      }
+      case 'm': {
         unsigned long long memory_limit = strtoull(optarg, NULL, 10);
         debug("Memory limit: %lld MB\n", memory_limit);
         char buf[50];
         snprintf(buf, 50, "%lld", memory_limit * 1024 * 1024);
         append(&config->cgroup_limit, "memory.max", buf);
         break;
-      case '?':
+      }
+      case '?': {
         err(EXIT_FAILURE, "Invalid option argument: %s\n", argv[optind]);
         break;
-      case 0:
+      }
+      case 0: {
         const char* option = long_options[option_index].name;
         debug("option: %s, optarg: %s\n", option, optarg);
         if (strcmp("hostname", option) == 0) {
@@ -98,10 +102,12 @@ void parse(int argc, char* argv[], container_config_t* config) {
           err(EXIT_FAILURE, "Unknown option: %s\n", option);
         }
         break;
-      default:
+      }
+      default: {
         usage(argv[0]);
         err(EXIT_FAILURE, "Unknown option: %c\n", opt);
         break;
+      }
     }
   }
   if (optind > argc - 2) {

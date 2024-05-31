@@ -1,6 +1,7 @@
 #include "filesystem.h"
 
 #include <err.h>
+#include <fcntl.h>
 #include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
