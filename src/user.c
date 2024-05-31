@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "log.h"
 #include "utils.h"
 
 int setup_user_mapping(pid_t child_pid, uid_t uid, gid_t gid, int socket_fd) {
