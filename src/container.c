@@ -87,7 +87,8 @@ static int container_init(void *args) {
   clearenv();
 
   debug("Setting env...\n");
-  for (pair_t *env = config->env; env; env = env->next) {
+  for (list_t *node = config->env; node; node = node->next) {
+    pair_t *env = (pair_t *)node->data;
     debug("Setting env: %s=%s\n", env->key, env->value);
     if (setenv(env->key, env->value, 1) == -1)
       err(EXIT_FAILURE, "setenv %s=%s", env->key, env->value);

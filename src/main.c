@@ -59,7 +59,7 @@ void parse(int argc, char* argv[], container_config_t* config) {
           exit(EXIT_FAILURE);
         }
         free(arg);
-        append(&config->env, key, value);
+        append_pair(&config->env, key, value);
         break;
       }
       case 'm': {
@@ -67,7 +67,7 @@ void parse(int argc, char* argv[], container_config_t* config) {
         debug("Memory limit: %lld MB\n", memory_limit);
         char buf[50];
         snprintf(buf, 50, "%lld", memory_limit * 1024 * 1024);
-        append(&config->cgroup_limit, "memory.max", buf);
+        append_pair(&config->cgroup_limit, "memory.max", buf);
         break;
       }
       case '?': {
@@ -91,13 +91,13 @@ void parse(int argc, char* argv[], container_config_t* config) {
           char buf[50];
           int cpus = atoi(optarg);
           snprintf(buf, 50, "0-%d", cpus - 1);
-          append(&config->cgroup_limit, "cpuset.cpus", buf);
+          append_pair(&config->cgroup_limit, "cpuset.cpus", buf);
         } else if (strcmp("cpuset-cpus", option) == 0) {
-          append(&config->cgroup_limit, "cpuset.cpus", optarg);
+          append_pair(&config->cgroup_limit, "cpuset.cpus", optarg);
         } else if (strcmp("cpu-weight", option) == 0) {
-          append(&config->cgroup_limit, "cpu.weight", optarg);
+          append_pair(&config->cgroup_limit, "cpu.weight", optarg);
         } else if (strcmp("cpu-max", option) == 0) {
-          append(&config->cgroup_limit, "cpu.max", optarg);
+          append_pair(&config->cgroup_limit, "cpu.max", optarg);
         } else {
           err(EXIT_FAILURE, "Unknown option: %s\n", option);
         }
@@ -130,14 +130,10 @@ int main(int argc, char* argv[]) {
       .rm = true,
       .cgroup_base_path = "/sys/fs/cgroup/system.slice"};
 
-  append(&config.env, "PATH", "/bin:/sbin:/usr/bin:/usr/sbin");
-  append(&config.env, "HOME", "/root");
-  append(&config.env, "USER", "root");
-  append(&config.env, "TERM", "xterm-256color");
-  debug("Environment variables:\n");
-  for (pair_t* env = config.env; env; env = env->next) {
-    debug("key: %s, value: %s\n", env->key, env->value);
-  }
+  append_pair(&config.env, "PATH", "/bin:/sbin:/usr/bin:/usr/sbin");
+  append_pair(&config.env, "HOME", "/root");
+  append_pair(&config.env, "USER", "root");
+  append_pair(&config.env, "TERM", "xterm-256color");
   parse(argc, argv, &config);
   run(&config);
   return 0;

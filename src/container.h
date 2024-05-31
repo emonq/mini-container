@@ -18,10 +18,10 @@ struct container_config {
   char *hostname;
   char *cgroup_base_path;
   char *id;
-  pair_t *cgroup_limit;
+  list_t *cgroup_limit;
   bool rm;
   int fd;
-  struct pair *env;
+  list_t *env;
   struct mount *mounts;
   char **args;
 };

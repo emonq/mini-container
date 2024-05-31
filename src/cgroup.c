@@ -13,8 +13,9 @@
 #include "type.h"
 #include "utils.h"
 
-int setup_limits(const char *cgroup_path, const pair_t *limits) {
-  for (const pair_t *limit = limits; limit; limit = limit->next) {
+int setup_limits(const char *cgroup_path, const list_t *limits_list) {
+  for (const list_t *node = limits_list; node; node = node->next) {
+    pair_t *limit = (pair_t *)node->data;
     if (strlen(limit->key) >= 50) {
       error("Cgroup limit key too long\n");
       exit(EXIT_FAILURE);
@@ -32,13 +33,13 @@ int setup_limits(const char *cgroup_path, const pair_t *limits) {
 }
 
 int setup_cgroup(pid_t pid, const char *cgroup_base_path,
-                 const char *container_id, const struct pair *limits) {
+                 const char *container_id, const list_t *limits_list) {
   char cgroup_path[PATH_MAX];
   snprintf(cgroup_path, PATH_MAX, "%s/%s", cgroup_base_path, container_id);
   debug("Cgroup path: %s\n", cgroup_path);
   if (mkdir(cgroup_path, 0700))
     err(EXIT_FAILURE, "mkdir-cgroup %s", cgroup_path);
-  if (limits) setup_limits(cgroup_path, limits);
+  if (limits_list) setup_limits(cgroup_path, limits_list);
 
   snprintf(cgroup_path, PATH_MAX, "%s/%s/cgroup.procs", cgroup_base_path,
            container_id);

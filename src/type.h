@@ -1,14 +1,19 @@
 #ifndef _TYPE_H_
 #define _TYPE_H_
 
+struct linked_list {
+  void *data;
+  struct linked_list *next;
+};
+
 struct pair {
   char *key;
   char *value;
-  struct pair *next;
 };
 
 typedef struct pair pair_t;
+typedef struct linked_list list_t;
 
-pair_t *append(pair_t **head, const char *key, const char *value);
+list_t *append_pair(list_t **head, const char *key, const char *value);
 
 #endif
