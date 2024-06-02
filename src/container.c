@@ -65,6 +65,9 @@ static int container_init(void *args) {
   close(socket_fd);
   debug("User map setup completed\n");
 
+  setresuid(0, 0, 0);
+  setresgid(0, 0, 0);
+
   if (strlen(config->id) > CONTAINER_ID_LEN_MAX) {
     error("Container ID too long\n");
     exit(EXIT_FAILURE);
@@ -120,33 +123,63 @@ void run(struct container_config *config) {
   if (fcntl(sockets[0], F_SETFD, FD_CLOEXEC) == -1) err(EXIT_FAILURE, "fcntl");
 
   prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
-  char *container_stack;
-  container_stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
-  pid_t child_pid =
-      clone(container_init, container_stack + STACK_SIZE,
-            CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET |
-                CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWCGROUP | SIGCHLD,
-            config);
-  if (child_pid == -1) err(EXIT_FAILURE, "clone");
 
-  debug("Child PID: %ld\n", (long)child_pid);
+  int comm_socket[2];
+  if (socketpair(AF_LOCAL, SOCK_SEQPACKET, 0, comm_socket))
+    err(EXIT_FAILURE, "socketpair");
+  if (fcntl(comm_socket[0], F_SETFD, FD_CLOEXEC) == -1)
+    err(EXIT_FAILURE, "fcntl");
+  pid_t pid;
+  // spawn a helper process run as configured user
+  if ((pid = fork()) == 0) {
+    uid_t uid = config->uid;
+    gid_t gid = config->gid;
 
-  setup_cgroup(child_pid, config->cgroup_base_path, config->id,
-               config->cgroup_limit);
+    if (setresuid(uid, uid, uid)) err(EXIT_FAILURE, "setresuid");
+    if (setresgid(gid, gid, gid)) err(EXIT_FAILURE, "setresgid");
+    int res;
+    if (read(comm_socket[1], &res, sizeof(int)) != sizeof(int))
+      err(EXIT_FAILURE, "read-comm_socket1");
+    char *container_stack;
+    container_stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+    pid_t child_pid =
+        clone(container_init, container_stack + STACK_SIZE,
+              CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET |
+                  CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWCGROUP | SIGCHLD,
+              config);
+    if (child_pid == -1) err(EXIT_FAILURE, "clone");
+    debug("Child PID: %ld\n", (long)child_pid);
+    if (write(comm_socket[1], &child_pid, sizeof(pid_t)) != sizeof(pid_t))
+      err(EXIT_FAILURE, "write-comm_socket");
+    close(comm_socket[1]);
+    // wait for child process to terminate
+    int status;
+    waitpid(child_pid, &status, 0);
+    if (WIFEXITED(status))
+      info("Child exited with status %d\n", WEXITSTATUS(status));
+    else if (WIFSIGNALED(status))
+      error("Child killed by signal %d\n", WTERMSIG(status));
+    else
+      error("Child exited with unknown status\n");
+  } else {
+    setup_cgroup(pid, config->cgroup_base_path, config->id,
+                 config->cgroup_limit);
+    if (write(comm_socket[0], &(int){0}, sizeof(int)) != sizeof(int))
+      err(EXIT_FAILURE, "write-comm_socket1");
+    pid_t child_pid;
+    if (read(comm_socket[0], &child_pid, sizeof(pid_t)) != sizeof(pid_t))
+      err(EXIT_FAILURE, "read-comm_socket2");
+    close(comm_socket[0]);
+    setup_network_container(config->id, child_pid, config->ip, config->gateway);
+    int uid = config->uid, gid = config->gid;
+    setup_user_mapping(child_pid, uid, gid);
+    // notify child process to continue
+    if (write(sockets[0], &(int){0}, sizeof(int)) != sizeof(int))
+      err(EXIT_FAILURE, "notify_child");
+    close(sockets[0]);
 
-  int uid = getuid(), gid = getgid();
-  setup_user_mapping(child_pid, uid, gid, sockets[0]);
-  setup_network_container(config->id, child_pid, config->ip, config->gateway);
-
-  // wait for child process to terminate
-  int status;
-  waitpid(child_pid, &status, 0);
-  if (WIFEXITED(status))
-    info("Child exited with status %d\n", WEXITSTATUS(status));
-  else if (WIFSIGNALED(status))
-    error("Child killed by signal %d\n", WTERMSIG(status));
-  else
-    error("Child exited with unknown status\n");
-  if (config->rm) cleanup(config);
+    waitpid(pid, NULL, 0);
+    if (config->rm) cleanup(config);
+  }
 }

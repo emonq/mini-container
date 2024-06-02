@@ -97,6 +97,11 @@ int setup_mounts(const char *merged_root, list_t *mounts) {
             MS_NOEXEC | MS_NOSUID | MS_NODEV | MS_RDONLY, NULL) == -1)
     err(EXIT_FAILURE, "mount-sysfs");
 
+  // snprintf(mount_point, PATH_MAX, "%s/sys/fs/cgroup", merged_root);
+  // if (mount("none", mount_point, "cgroup2",
+  //           MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME, NULL) == -1)
+  //   err(EXIT_FAILURE, "mount-cgroup");
+
   const char *devs[] = {"/dev/null", "/dev/zero",   "/dev/full",
                         "/dev/tty",  "/dev/random", "/dev/urandom"};
   for (int i = 0; i < 6; i++) {
@@ -112,6 +117,7 @@ int setup_mounts(const char *merged_root, list_t *mounts) {
             MS_BIND | MS_NOATIME | MS_RDONLY, NULL) == -1)
     err(EXIT_FAILURE, "mount-resolv.conf");
 
+  // mount user specified mounts
   for (list_t *node = mounts; node; node = node->next) {
     struct mount_options *mount_option = (struct mount_options *)node->data;
     debug("Mounting %s to %s, fstype: %s, flags: 0x%x, options: %s\n",
@@ -169,6 +175,18 @@ int setup_filesystem(const char *image_path, const char *container_id,
 
   setup_mounts(merged_root, mounts);
 
+  // char cgroup_path[PATH_MAX + 30];
+  // snprintf(cgroup_path, PATH_MAX + 30, "/sys/fs/cgroup/system.slice/%s",
+  //          container_id);
+  // char mount_point[PATH_MAX + 20];
+  // snprintf(mount_point, PATH_MAX + 20, "%s/sys/fs/cgroup", merged_root);
+  // if (mount(cgroup_path, mount_point, NULL, MS_BIND | MS_RDONLY, NULL) == -1)
+  //   err(EXIT_FAILURE, "mount-cgroup");
+  // if (mount(NULL, mount_point, NULL, MS_REMOUNT | MS_BIND | MS_RDONLY, NULL)
+  // ==
+  //     -1)
+  //   err(EXIT_FAILURE, "mount-cgroup-remount");
+
   char put_old[PATH_MAX + 10];
   snprintf(put_old, PATH_MAX + 10, "%s/old_root", merged_root);
   if (mkdir(put_old, 0700)) err(EXIT_FAILURE, "mkdir-put_old");
@@ -184,8 +202,9 @@ int setup_filesystem(const char *image_path, const char *container_id,
   if (mount("tmpfs", "/tmp", "tmpfs", 0, NULL) == -1)
     err(EXIT_FAILURE, "mount-tmpfs");
 
-  if (mount("cgroup2", "/sys/fs/cgroup", "cgroup2",
-            MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RDONLY, NULL) == -1)
+  if (mount("none", "/sys/fs/cgroup", "cgroup2",
+            MS_NOSUID | MS_RDONLY | MS_NODEV | MS_NOEXEC | MS_RELATIME,
+            NULL) == -1)
     err(EXIT_FAILURE, "mount-sys/fs/cgroup");
 
   if (chdir("/") == -1) err(EXIT_FAILURE, "chdir");

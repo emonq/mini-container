@@ -19,7 +19,8 @@ void usage(const char* name) {
   fprintf(stderr, "  --rm\t\t\tRemove container when it exits\n");
   fprintf(stderr, "  --container-base\tSet container base path\n");
   fprintf(stderr, "  --cgroup-base\t\tSet cgroup base path\n");
-  fprintf(stderr, "  -m,--memory\t\tSet memory limit in MB\n");
+  fprintf(stderr, "  -m, --memory\t\tSet memory limit in MB\n");
+  fprintf(stderr, "  --memory-swap\t\tSet memory swap limit in MB\n");
   fprintf(stderr, "  --cpus\t\tNumber of CPUs\n");
   fprintf(stderr, "  --cpuset-cpus\t\tCPUs in which to allow execution\n");
   fprintf(stderr, "  --cpu-weight\t\tSet CPU weight, ranges from 1 to 10000\n");
@@ -34,15 +35,22 @@ void usage(const char* name) {
 
 void parse(int argc, char* argv[], container_config_t* config) {
   debug("Parsing arguments...\n");
+  // default values
+  config->uid = getuid();
+  config->gid = getgid();
+
   int opt, option_index;
   struct option long_options[] = {{"hostname", required_argument, 0, 0},
                                   {"rm", no_argument, 0, 0},
                                   {"container-base", required_argument, 0, 0},
                                   {"cgroup-base", required_argument, 0, 0},
                                   {"help", no_argument, 0, 'h'},
+                                  {"uid", required_argument, 0, 'u'},
+                                  {"gid", required_argument, 0, 'g'},
                                   {"debug", no_argument, 0, 0},
                                   {"env", required_argument, 0, 'e'},
                                   {"memory", required_argument, 0, 'm'},
+                                  {"memory-swap", required_argument, 0, 0},
                                   {"cpus", required_argument, 0, 0},
                                   {"cpuset-cpus", required_argument, 0, 0},
                                   {"cpu-weight", required_argument, 0, 0},
@@ -51,7 +59,7 @@ void parse(int argc, char* argv[], container_config_t* config) {
                                   {"ip", required_argument, 0, 0},
                                   {"gateway", required_argument, 0, 0},
                                   {0, 0, 0, 0}};
-  while ((opt = getopt_long(argc, argv, "he:m:v:", long_options,
+  while ((opt = getopt_long(argc, argv, "he:m:v:u:g:", long_options,
                             &option_index)) != -1) {
     switch (opt) {
       case 'h': {
@@ -93,6 +101,14 @@ void parse(int argc, char* argv[], container_config_t* config) {
                              MS_BIND | parse_bind_mount_option(options), NULL);
         break;
       }
+      case 'u': {
+        config->uid = atoi(optarg);
+        break;
+      }
+      case 'g': {
+        config->gid = atoi(optarg);
+        break;
+      }
       case '?': {
         err(EXIT_FAILURE, "Invalid option argument: %s\n", argv[optind]);
         break;
@@ -125,6 +141,11 @@ void parse(int argc, char* argv[], container_config_t* config) {
           config->ip = optarg;
         } else if (strcmp("gateway", option) == 0) {
           config->gateway = optarg;
+        } else if (strcmp("memory-swap", option) == 0) {
+          char buf[50];
+          unsigned long long memory_swap = strtoull(optarg, NULL, 10);
+          snprintf(buf, 50, "%lld", memory_swap * 1024 * 1024);
+          append_pair(&config->cgroup_limit, "memory.swap.max", buf);
         } else {
           err(EXIT_FAILURE, "Unknown option: %s\n", option);
         }

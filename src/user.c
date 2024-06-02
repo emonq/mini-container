@@ -12,7 +12,7 @@
 #include "log.h"
 #include "utils.h"
 
-int setup_user_mapping(pid_t child_pid, uid_t uid, gid_t gid, int socket_fd) {
+int setup_user_mapping(pid_t child_pid, uid_t uid, gid_t gid) {
   debug("Setting up user map for child %ld with uid=%d, gid=%d...\n",
         (long)child_pid, uid, gid);
   char path[PATH_MAX];
@@ -36,9 +36,5 @@ int setup_user_mapping(pid_t child_pid, uid_t uid, gid_t gid, int socket_fd) {
   fprintf(gid_map, "0 %d 1\n", gid);
   fclose(gid_map);
 
-  // notify child process to continue
-  if (write(socket_fd, &(int){0}, sizeof(int)) != sizeof(int))
-    err(EXIT_FAILURE, "write-socket_fd");
-  close(socket_fd);
   return 0;
 }

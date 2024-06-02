@@ -37,6 +37,7 @@ int setup_cgroup(pid_t pid, const char *cgroup_base_path,
   char cgroup_path[PATH_MAX];
   snprintf(cgroup_path, PATH_MAX, "%s/%s", cgroup_base_path, container_id);
   debug("Cgroup path: %s\n", cgroup_path);
+  debug("uid=%d, gid=%d\n", getuid(), getgid());
   if (mkdir(cgroup_path, 0700))
     err(EXIT_FAILURE, "mkdir-cgroup %s", cgroup_path);
   if (limits_list) setup_limits(cgroup_path, limits_list);

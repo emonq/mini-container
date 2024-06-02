@@ -25,6 +25,8 @@ struct container_config {
   char *ip;
   char *gateway;
   list_t *env;
+  uid_t uid;
+  gid_t gid;
   char **args;
 };
 
