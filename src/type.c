@@ -3,12 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-list_t *append_pair(list_t **head, const char *key, const char *value) {
-  pair_t *new = malloc(sizeof(pair_t));
+list_t *append(list_t **head, void *data) {
   list_t *node = malloc(sizeof(list_t));
-  new->key = strdup(key);
-  new->value = strdup(value);
-  node->data = new;
+  node->data = data;
   node->next = NULL;
   if (*head != NULL) {
     list_t *cur = *head;
@@ -17,4 +14,11 @@ list_t *append_pair(list_t **head, const char *key, const char *value) {
   } else
     *head = node;
   return node;
+}
+
+list_t *append_pair(list_t **head, const char *key, const char *value) {
+  pair_t *new = malloc(sizeof(pair_t));
+  new->key = strdup(key);
+  new->value = strdup(value);
+  return append(head, new);
 }

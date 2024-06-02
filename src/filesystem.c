@@ -1,6 +1,7 @@
 #include "filesystem.h"
 
 #include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/limits.h>
 #include <stdio.h>
@@ -11,10 +12,23 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "type.h"
 #include "utils.h"
 
-int setup_container_data(const char* container_data_path,
-                         const char* image_path) {
+list_t *append_mount_options(list_t **head, const char *source,
+                             const char *target, const char *filesystem,
+                             unsigned long flags, const char *data) {
+  struct mount_options *new = malloc(sizeof(struct mount_options));
+  new->source = source ? strdup(source) : NULL;
+  new->target = target ? strdup(target) : NULL;
+  new->filesystem = filesystem ? strdup(filesystem) : NULL;
+  new->flags = flags;
+  new->data = data ? strdup(data) : NULL;
+  return append(head, new);
+}
+
+int setup_container_data(const char *container_data_path,
+                         const char *image_path) {
   if (access(container_data_path, F_OK) != 0)
     err(EXIT_FAILURE, "access %s", container_data_path);
   if (access(image_path, F_OK) != 0) err(EXIT_FAILURE, "access %s", image_path);
@@ -49,7 +63,7 @@ int setup_container_data(const char* container_data_path,
   return 0;
 }
 
-int setup_mounts(const char* merged_root) {
+int setup_mounts(const char *merged_root, list_t *mounts) {
   char mount_point[PATH_MAX];
   snprintf(mount_point, PATH_MAX, "%s/proc", merged_root);
   if (mount("proc", mount_point, "proc", 0, NULL) == -1)
@@ -83,7 +97,7 @@ int setup_mounts(const char* merged_root) {
             MS_NOEXEC | MS_NOSUID | MS_NODEV | MS_RDONLY, NULL) == -1)
     err(EXIT_FAILURE, "mount-sysfs");
 
-  const char* devs[] = {"/dev/null", "/dev/zero",   "/dev/full",
+  const char *devs[] = {"/dev/null", "/dev/zero",   "/dev/full",
                         "/dev/tty",  "/dev/random", "/dev/urandom"};
   for (int i = 0; i < 6; i++) {
     snprintf(mount_point, PATH_MAX, "%s%s", merged_root, devs[i]);
@@ -95,14 +109,43 @@ int setup_mounts(const char* merged_root) {
   }
   snprintf(mount_point, PATH_MAX, "%s/etc/resolv.conf", merged_root);
   if (mount("/etc/resolv.conf", mount_point, NULL,
-            MS_BIND | MS_NOATIME | O_RDONLY, NULL) == -1)
+            MS_BIND | MS_NOATIME | MS_RDONLY, NULL) == -1)
     err(EXIT_FAILURE, "mount-resolv.conf");
+
+  for (list_t *node = mounts; node; node = node->next) {
+    struct mount_options *mount_option = (struct mount_options *)node->data;
+    debug("Mounting %s to %s, fstype: %s, flags: 0x%x, options: %s\n",
+          mount_option->source, mount_option->target, mount_option->filesystem,
+          mount_option->flags, mount_option->data);
+    snprintf(mount_point, PATH_MAX, "%s%s", merged_root, mount_option->target);
+    if (access(mount_point, F_OK) == -1) {
+      struct stat st;
+      if (stat(mount_option->source, &st) == -1)
+        err(EXIT_FAILURE, "stat %s", mount_option->source);
+      int perm = st.st_mode & 0777;
+      if (S_ISDIR(st.st_mode)) {
+        if (mkdir(mount_point, perm))
+          err(EXIT_FAILURE, "mkdir-%s", mount_point);
+      } else {
+        int fd = open(mount_point, O_CREAT, perm);
+        if (fd == -1) err(EXIT_FAILURE, "create-%s", mount_point);
+        close(fd);
+      }
+    }
+    if (mount(mount_option->source, mount_point, mount_option->filesystem,
+              MS_BIND, mount_option->data) == -1)
+      err(EXIT_FAILURE, "mount-%s:%s", mount_option->source,
+          mount_option->target);
+    if (mount(NULL, mount_point, NULL, mount_option->flags | MS_REMOUNT,
+              NULL) == -1)
+      err(EXIT_FAILURE, "mount-remount-%s", mount_point);
+  }
 
   return 0;
 }
 
-int setup_filesystem(const char* image_path, const char* container_id,
-                     const char* container_base) {
+int setup_filesystem(const char *image_path, const char *container_id,
+                     const char *container_base, list_t *mounts) {
   debug("Image path: %s\n", image_path);
   if (image_path == NULL || container_base == NULL) {
     error("Neither rootfs nor container_base should be NULL\n");
@@ -124,7 +167,7 @@ int setup_filesystem(const char* image_path, const char* container_id,
   char merged_root[PATH_MAX];
   snprintf(merged_root, PATH_MAX, "%s/merged", container_path);
 
-  setup_mounts(merged_root);
+  setup_mounts(merged_root, mounts);
 
   char put_old[PATH_MAX + 10];
   snprintf(put_old, PATH_MAX + 10, "%s/old_root", merged_root);
@@ -148,4 +191,22 @@ int setup_filesystem(const char* image_path, const char* container_id,
   if (chdir("/") == -1) err(EXIT_FAILURE, "chdir");
   debug("Filesystem setup completed\n");
   return 0;
+}
+
+int parse_bind_mount_option(const char *options) {
+  if (!options) return 0;
+  char *options_copy = strdup(options);
+  char *option = strtok(options_copy, ",");
+  int flags = 0;
+  while (option) {
+    if (strncmp(option, "ro", 2) == 0) {
+      flags |= MS_RDONLY;
+    } else if (strncmp(option, "rw", 2) == 0) {
+      flags &= ~MS_RDONLY;
+    } else {
+      err(EXIT_FAILURE, "Invalid bind mount option: %s\n", option);
+    }
+    option = strtok(NULL, ",");
+  }
+  return flags;
 }

@@ -3,8 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 
 #include "container.h"
+#include "filesystem.h"
 #include "log.h"
 #include "type.h"
 #include "utils.h"
@@ -24,6 +26,9 @@ void usage(const char* name) {
   fprintf(stderr, "  --cpu-max\t\tLimit max CPU usage in period of 1000000\n");
   fprintf(stderr, "  --debug\t\tPrint debug info\n");
   fprintf(stderr, "  -e, --env\t\tSet environment variables\n");
+  fprintf(stderr, "  -v, --volume\t\tBind mount a volume\n");
+  fprintf(stderr, "  --ip\t\t\tContainer IP\n");
+  fprintf(stderr, "  --gateway\t\tContainer gateway\n");
   exit(EXIT_SUCCESS);
 }
 
@@ -42,8 +47,11 @@ void parse(int argc, char* argv[], container_config_t* config) {
                                   {"cpuset-cpus", required_argument, 0, 0},
                                   {"cpu-weight", required_argument, 0, 0},
                                   {"cpu-max", required_argument, 0, 0},
+                                  {"volume", required_argument, 0, 'v'},
+                                  {"ip", required_argument, 0, 0},
+                                  {"gateway", required_argument, 0, 0},
                                   {0, 0, 0, 0}};
-  while ((opt = getopt_long(argc, argv, "he:m:", long_options,
+  while ((opt = getopt_long(argc, argv, "he:m:v:", long_options,
                             &option_index)) != -1) {
     switch (opt) {
       case 'h': {
@@ -68,6 +76,21 @@ void parse(int argc, char* argv[], container_config_t* config) {
         char buf[50];
         snprintf(buf, 50, "%lld", memory_limit * 1024 * 1024);
         append_pair(&config->cgroup_limit, "memory.max", buf);
+        break;
+      }
+      case 'v': {
+        char* arg = strdup(optarg);
+        char* source = strtok(optarg, ":");
+        char* target = strtok(NULL, ":");
+        char* options = strtok(NULL, ":");
+        debug("Source: %s, Target: %s, options: %s\n", source, target, options);
+        if (source == NULL || target == NULL) {
+          error("Invalid volume format: %s\n", arg);
+          exit(EXIT_FAILURE);
+        }
+        free(arg);
+        append_mount_options(&config->mounts, source, target, NULL,
+                             MS_BIND | parse_bind_mount_option(options), NULL);
         break;
       }
       case '?': {
@@ -98,6 +121,10 @@ void parse(int argc, char* argv[], container_config_t* config) {
           append_pair(&config->cgroup_limit, "cpu.weight", optarg);
         } else if (strcmp("cpu-max", option) == 0) {
           append_pair(&config->cgroup_limit, "cpu.max", optarg);
+        } else if (strcmp("ip", option) == 0) {
+          config->ip = optarg;
+        } else if (strcmp("gateway", option) == 0) {
+          config->gateway = optarg;
         } else {
           err(EXIT_FAILURE, "Unknown option: %s\n", option);
         }
@@ -121,9 +148,6 @@ void parse(int argc, char* argv[], container_config_t* config) {
 }
 
 int main(int argc, char* argv[]) {
-  debug("mini-container starting... PID: %ld\n", (long)getpid());
-  debug("uid: %d, gid: %d\n", getuid(), getgid());
-
   struct container_config config = {
       .image_base_path = "/var/lib/mini-container/images",
       .container_base = "/var/lib/mini-container/volumns",
@@ -135,6 +159,8 @@ int main(int argc, char* argv[]) {
   append_pair(&config.env, "USER", "root");
   append_pair(&config.env, "TERM", "xterm-256color");
   parse(argc, argv, &config);
+  debug("mini-container starting... PID: %ld\n", (long)getpid());
+  debug("uid: %d, gid: %d\n", getuid(), getgid());
   run(&config);
   return 0;
 }

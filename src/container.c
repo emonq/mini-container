@@ -78,8 +78,9 @@ static int container_init(void *args) {
   snprintf(image_path, PATH_MAX, "%s/%s/rootfs", config->image_base_path,
            config->image);
 
-  if (setup_filesystem(image_path, config->id, config->container_base) ||
-      setup_hostname(config->hostname) || setup_network_container()) {
+  if (setup_filesystem(image_path, config->id, config->container_base,
+                       config->mounts) ||
+      setup_hostname(config->hostname)) {
     error("Error initializing container, exiting...\n");
     return 1;
   }
@@ -136,6 +137,7 @@ void run(struct container_config *config) {
 
   int uid = getuid(), gid = getgid();
   setup_user_mapping(child_pid, uid, gid, sockets[0]);
+  setup_network_container(config->id, child_pid, config->ip, config->gateway);
 
   // wait for child process to terminate
   int status;

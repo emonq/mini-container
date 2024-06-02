@@ -19,10 +19,12 @@ struct container_config {
   char *cgroup_base_path;
   char *id;
   list_t *cgroup_limit;
+  list_t *mounts;
   bool rm;
   int fd;
+  char *ip;
+  char *gateway;
   list_t *env;
-  struct mount *mounts;
   char **args;
 };
 
